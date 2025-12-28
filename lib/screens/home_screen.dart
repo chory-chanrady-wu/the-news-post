@@ -22,6 +22,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late String selectedCategory;
+  late Future<List<Article>> _articlesFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   // UI name → GNews category
   final Map<String, String> categories = {
@@ -39,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     selectedCategory = widget.category;
+    _articlesFuture = _loadArticles();
   }
 
   @override
@@ -47,14 +51,67 @@ class _HomeScreenState extends State<HomeScreen> {
     if (oldWidget.category != widget.category) {
       setState(() {
         selectedCategory = widget.category;
+        _articlesFuture = _loadArticles();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<List<Article>> _loadArticles() {
+    if (_searchQuery.isNotEmpty) {
+      return NewsService().searchNews(_searchQuery, category: selectedCategory);
+    }
+    return NewsService().fetchNews(selectedCategory);
+  }
+
+  void _onSearchSubmitted(String value) {
+    setState(() {
+      _searchQuery = value.trim();
+      _articlesFuture = _loadArticles();
+    });
+  }
+
+  void _clearSearch() {
+    setState(() {
+      _searchQuery = '';
+      _searchController.clear();
+      _articlesFuture = _loadArticles();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // 🔍 Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: TextField(
+            controller: _searchController,
+            onSubmitted: _onSearchSubmitted,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search news (e.g., AI, economy, sports)...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: _clearSearch,
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+          ),
+        ),
+
         // 🔴 Top Category Chips
         SizedBox(
           height: 50,
@@ -76,6 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   onSelected: (_) {
                     setState(() {
                       selectedCategory = entry.value;
+                      _articlesFuture = _loadArticles();
                     });
                   },
                 ),
@@ -87,13 +145,25 @@ class _HomeScreenState extends State<HomeScreen> {
         // 📰 News Content
         Expanded(
           child: FutureBuilder<List<Article>>(
-            future: NewsService().fetchNews(selectedCategory),
+            future: _articlesFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
                 return const Center(child: Text('Error loading news'));
+              }
+
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return Center(
+                  child: Text(
+                    _searchQuery.isEmpty
+                        ? 'No articles found in this category.'
+                        : 'No results for "$_searchQuery".',
+                    style: const TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                );
               }
 
               final articles = snapshot.data!;
@@ -128,7 +198,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           // Image
                           ClipRRect(
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(12),
+                            ),
                             child: Image.network(
                               article.imageUrl,
                               height: 220,
@@ -137,7 +209,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               errorBuilder: (_, __, ___) => Container(
                                 height: 220,
                                 color: Colors.grey[300],
-                                child: const Center(child: Icon(Icons.broken_image)),
+                                child: const Center(
+                                  child: Icon(Icons.broken_image),
+                                ),
                               ),
                             ),
                           ),
@@ -156,7 +230,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 8),
                           // Description
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                             child: Text(
                               article.description,
                               maxLines: 3,
@@ -173,7 +250,6 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ),
-
       ],
     );
   }
